@@ -675,6 +675,13 @@ kbd {
 .field textarea:focus-visible, .text-input:focus-visible { border-color: var(--accent); box-shadow: var(--focus); border-radius: 10px; }
 .field-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: .72rem; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .field-footer .warn { color: var(--warn); }
+.backend-row { display: flex; gap: 8px; align-items: center; }
+.backend-row .text-input { flex: 1; min-width: 0; }
+.field-error { margin: 6px 0 0; font-size: .78rem; color: var(--danger-text); }
+.conn-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.conn-status.ok { color: var(--live); }
+.conn-status.bad { color: var(--danger-text); }
+.conn-status.checking { color: var(--text-3); }
 
 .segmented, .theme-picker { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 12px; background: var(--panel-2); }
 .segmented button, .theme-picker button {

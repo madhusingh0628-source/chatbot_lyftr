@@ -2,6 +2,7 @@ from fastapi import APIRouter, Header, HTTPException, Path, Request
 from fastapi.responses import JSONResponse, Response
 
 from . import db
+from .ratelimit import client_key
 from .llm_gateway import AllProvidersUnavailable, NoVisionModel, cache_enabled, parse_simulation_header
 from .schemas import ChatRequest, ChatResponse
 from .sessions import handle_chat
@@ -49,6 +50,11 @@ def chat(
     x_simulate_failure: str | None = Header(default=None),  # reads the X-Simulate-Failure header
 ):
     settings = request.app.state.settings
+    wait = request.app.state.rate_limiter.check(client_key(request))
+    if wait is not None:
+        secs = int(wait + 0.999)
+        return JSONResponse(status_code=429, headers={"Retry-After": str(secs)},
+                            content={"detail": f"too many messages, try again in {secs} s"})
     # the test hook is honored ONLY when explicitly enabled
     simulate = parse_simulation_header(x_simulate_failure) if settings.enable_failure_simulation else {}
     try:

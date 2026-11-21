@@ -1,41 +1,77 @@
-// Backend base URL, baked in at build time or overridden at runtime
+// ---------- where the backend lives ----------
+// The ONE place the production backend address is written down.
+export const DEFAULT_BACKEND = "https://chatbot-backend-3k2m.onrender.com";
+const OVERRIDE_KEY = "API_URL";
+
+function readOverride() {
+  try {
+    return (globalThis.localStorage?.getItem(OVERRIDE_KEY) || "").trim();
+  } catch {
+    return "";   // storage blocked (strict privacy settings): never break the page over it
+  }
+}
+
+/** Address used when the user hasn't overridden it. "" = same origin (Vercel proxies the API). */
+export function defaultApiUrl() {
+  const built = (import.meta.env.VITE_API_URL || "").trim();
+  if (built) return normalizeApiUrl(built).url ?? "";
+  const host = globalThis.location?.hostname || "";
+  if (host === "localhost" || host === "127.0.0.1") return "http://localhost:8000";
+  if (host.endsWith(".vercel.app")) return "";   // vercel.json rewrites /chat, /health, /sessions to Render
+  return DEFAULT_BACKEND;
+}
+
+/** Validate a user-typed address. Returns { url } or { error }. */
+export function normalizeApiUrl(raw) {
+  let value = (raw || "").trim();
+  if (!value) return { url: "" };
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) value = `https://${value}`;
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return { error: "That doesn't look like a web address." };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return { error: "Use an http:// or https:// address." };
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
+  if (parsed.protocol === "http:" && globalThis.location?.protocol === "https:" && !local) {
+    return { error: "This page is served over HTTPS, so the browser will block an http:// backend. Use https://." };
+  }
+  return { url: (parsed.origin + parsed.pathname).replace(/\/+$/, "") };
+}
+
 export function getApiUrl() {
-  const custom = (typeof window !== "undefined" && localStorage.getItem("API_URL") || "").trim();
-  if (custom) return custom.replace(/\/+$/, "");
-  const rawUrl = (import.meta.env.VITE_API_URL || "").trim();
-  if (rawUrl) {
-    let resolved = rawUrl;
-    if (!resolved.startsWith("http://") && !resolved.startsWith("https://")) {
-      resolved = `https://${resolved}`;
-    }
-    return resolved.replace(/\/+$/, "");
+  const override = readOverride();
+  if (override) {
+    const { url } = normalizeApiUrl(override);
+    if (url) return url;
   }
-  if (typeof window !== "undefined") {
-    const host = window.location.hostname;
-    if (host === "localhost" || host === "127.0.0.1") {
-      return "http://localhost:8000";
-    }
-    if (host.includes("vercel.app")) {
-      return ""; // Use same-origin relative paths proxied by Vercel rewrites to avoid CORS
-    }
-  }
-  return "https://chatbot-backend-3k2m.onrender.com";
+  return defaultApiUrl();
 }
 
-export function setApiUrl(url) {
-  if (typeof window === "undefined") return;
-  if (!url || !url.trim()) {
-    localStorage.removeItem("API_URL");
-  } else {
-    let resolved = url.trim();
-    if (!resolved.startsWith("http://") && !resolved.startsWith("https://")) {
-      resolved = `https://${resolved}`;
-    }
-    localStorage.setItem("API_URL", resolved.replace(/\/+$/, ""));
+export function hasApiOverride() {
+  return Boolean(readOverride());
+}
+
+/** Save (or with "" clear) the override. Returns an error message, or null on success. */
+export function setApiUrl(raw) {
+  const { url, error } = normalizeApiUrl(raw);
+  if (error) return error;
+  try {
+    if (!url || url === defaultApiUrl()) globalThis.localStorage?.removeItem(OVERRIDE_KEY);
+    else globalThis.localStorage?.setItem(OVERRIDE_KEY, url);
+    return null;
+  } catch {
+    return "Your browser is blocking site storage, so the address can't be saved.";
   }
 }
 
-export const API_URL = getApiUrl();
+/** Human-readable description of where requests go. */
+export function describeApiUrl(base = getApiUrl()) {
+  if (base) return base;
+  const origin = globalThis.location?.origin || "this site";
+  return `${origin} (proxied to the backend)`;
+}
 
 // New random id on every page load -> new session (spec: "A new session starts on each page load").
 export function newSessionId() {
@@ -67,19 +103,23 @@ function readableError(status, body) {
       })
       .join("; ");
   }
-  if (status === 502) {
-    return "The server or vision gateway timed out. Please try sending a slightly smaller image or click Retry.";
-  }
-  if (status === 504) {
-    return "Gateway timeout. The upstream AI provider took too long to answer. Please try again.";
+  if (status === 502 || status === 504) {
+    return "The backend didn't answer in time (it may be waking up after being idle). Please wait a moment and Retry.";
   }
   if (status === 404 && detail === "session not found") return "This conversation was not found on the server.";
-  if (status === 429) return "Too many requests. Please slow down and try again.";
+  if (status === 429) {
+    return typeof detail === "string" && detail ? `Slow down: ${detail}` : "Too many requests. Please wait a minute and try again.";
+  }
   if (typeof detail === "string") return `Error ${status}: ${detail}`;
   return `Error ${status}: something went wrong.`;
 }
 
-const unreachable = () => new ApiError(`Cannot reach the backend at ${getApiUrl()}. Is it running?`, 0);
+const unreachable = (base) => new ApiError(
+  base
+    ? `Cannot reach the backend at ${base}. It may be starting up (this can take up to a minute) — please try again.`
+    : "Cannot reach the backend through this site's proxy. It may be starting up (this can take up to a minute) — please try again.",
+  0,
+);
 
 async function request(path, { timeoutMs, signal, ...init } = {}) {
   // combine the caller's signal (Stop button) with an optional timeout
@@ -94,29 +134,13 @@ async function request(path, { timeoutMs, signal, ...init } = {}) {
   let res;
   const baseUrl = getApiUrl();
   try {
+    // No automatic re-send: a POST /chat that failed at the proxy may already have reached
+    // the backend, and sending it again would store (and bill) the same turn twice.
     res = await fetch(`${baseUrl}${path}`, { ...init, signal: controller.signal });
-    // If proxied route gave a 502/504 gateway timeout, retry directly against Render
-    if ((res.status === 502 || res.status === 504) && baseUrl === "") {
-      try {
-        const directRes = await fetch(`https://chatbot-backend-3k2m.onrender.com${path}`, { ...init, signal: controller.signal });
-        if (directRes.ok) res = directRes;
-      } catch {
-        // keep original response
-      }
-    }
   } catch (err) {
     if (signal?.aborted) throw new DOMException("Request stopped", "AbortError");
     if (controller.signal.aborted) throw new ApiError("The server took too long to answer. Please try again.", 408);
-    // If relative request had network failure, try direct Render
-    if (baseUrl === "") {
-      try {
-        res = await fetch(`https://chatbot-backend-3k2m.onrender.com${path}`, { ...init, signal: controller.signal });
-      } catch {
-        throw unreachable();
-      }
-    } else {
-      throw unreachable();
-    }
+    throw unreachable(baseUrl);
   } finally {
     if (timer) clearTimeout(timer);
     signal?.removeEventListener("abort", onAbort);
@@ -129,9 +153,9 @@ async function request(path, { timeoutMs, signal, ...init } = {}) {
 }
 
 /** GET /health -> { reachable, ok, keys, cache, simulation, database } */
-export async function checkHealth() {
+export async function checkHealth({ timeoutMs = 75000 } = {}) {
   try {
-    const { res, data } = await request("/health", { timeoutMs: 6000 });
+    const { res, data } = await request("/health", { timeoutMs });
     return {
       reachable: true,
       ok: res.ok,

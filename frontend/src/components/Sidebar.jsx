@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "../icons.jsx";
+import { describeApiUrl } from "../api.js";
 import { GROUP_ORDER, copyText, dayGroup, modKey, relativeTime } from "../utils.js";
 
 function SessionItem({ s, active, loading, onSelect, onDelete, onRename, onTogglePin }) {
@@ -105,7 +106,7 @@ function SessionStats({ messages, sessionId, apiUrl, onToast }) {
         <Icon name="copy" size={12} />
       </button>
       <div className="backend-url" title="Backend URL">
-        <Icon name="monitor" size={12} /> <code>{apiUrl}</code>
+        <Icon name="monitor" size={12} /> <code>{describeApiUrl(apiUrl)}</code>
       </div>
     </div>
   );

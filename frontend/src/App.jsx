@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { API_URL, checkHealth, deleteSession, getApiUrl, getSessionMessages, newSessionId, sendChat, setApiUrl } from "./api.js";
+import {
+  checkHealth, deleteSession, describeApiUrl, getApiUrl, getSessionMessages, hasApiOverride, newSessionId, sendChat, setApiUrl,
+} from "./api.js";
 import {
   MAX_IMAGES, MAX_MESSAGE, charCount, composeMessage, isImage, isTextFile, parseStoredUserMessage,
   readImageFile, readTextFile,
@@ -36,12 +38,15 @@ function useMediaQuery(query) {
   return matches;
 }
 
-function HealthPill({ health, apiUrl }) {
+function HealthPill({ health, apiUrl, waking }) {
   let state = "checking";
   let label = "Connecting…";
-  const targetUrl = apiUrl || getApiUrl() || (typeof window !== "undefined" ? window.location.origin : "");
+  const targetUrl = describeApiUrl(apiUrl);
   let detail = `Checking ${targetUrl}`;
-  if (health) {
+  if (waking) {
+    state = "checking"; label = "Waking up…";
+    detail = "The free server sleeps when idle; the first request can take up to a minute.";
+  } else if (health) {
     if (!health.reachable) { state = "down"; label = "Offline"; detail = `Can't reach ${targetUrl}`; }
     else if (!health.ok) {
       state = "degraded"; label = "Degraded";
@@ -75,6 +80,7 @@ export default function App() {
   const [pending, setPending] = useState(null);          // { startedAt } while a reply is on its way
   const [loadingSession, setLoadingSession] = useState(null);
   const [health, setHealth] = useState(null);
+  const [waking, setWaking] = useState(false);
   const [apiUrl, setApiUrlState] = useState(getApiUrl);
   const [sessions, setSessions] = useState(loadSessions);
   const [sidebarOpen, setSidebarOpen] = useState(() => prefs.sidebarOpen && !globalThis.matchMedia?.(NARROW_QUERY).matches);
@@ -121,14 +127,28 @@ export default function App() {
   }, [theme]);
   const cycleTheme = () => setTheme((t) => (t === "system" ? "light" : t === "light" ? "dark" : "system"));
 
-  /* ---------- health: poll while visible, re-check on focus / network change ---------- */
+  /* ---------- health: poll while visible, re-check on focus / network change ----------
+     Render's free tier sleeps when idle and takes ~30-60 s to wake, so a slow answer is shown as
+     "Waking up…" rather than "Offline", and checks never overlap. */
+  const healthSeq = useRef(0);
+  const healthBusy = useRef(false);
+  const refreshHealth = useCallback(async (force = false) => {
+    if (healthBusy.current && !force) return;
+    if (document.visibilityState === "hidden" && !force) return;
+    const seq = ++healthSeq.current;
+    healthBusy.current = true;
+    const slow = setTimeout(() => { if (seq === healthSeq.current) setWaking(true); }, 3000);
+    try {
+      const h = await checkHealth({ timeoutMs: 75000 });
+      if (seq === healthSeq.current) setHealth(h);   // ignore answers for an old address
+    } finally {
+      clearTimeout(slow);
+      if (seq === healthSeq.current) { setWaking(false); healthBusy.current = false; }
+    }
+  }, []);
+
   useEffect(() => {
-    let alive = true;
-    const ping = async () => {
-      if (document.visibilityState === "hidden") return;
-      const h = await checkHealth();
-      if (alive) setHealth(h);
-    };
+    const ping = () => refreshHealth();
     ping();
     const t = setInterval(ping, 15000);
     const onVisible = () => document.visibilityState === "visible" && ping();
@@ -136,13 +156,12 @@ export default function App() {
     window.addEventListener("online", ping);
     window.addEventListener("offline", ping);
     return () => {
-      alive = false;
       clearInterval(t);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", ping);
       window.removeEventListener("offline", ping);
     };
-  }, []);
+  }, [refreshHealth]);
   const simulationAvailable = health?.simulation !== false;
   const offline = health ? !health.reachable : false;
 
@@ -236,7 +255,7 @@ export default function App() {
         addMessage({ role: "notice", text: "Stopped. The server may still finish this reply — reopen the chat from the sidebar to see it." });
       } else {
         addMessage({ role: "error", text: err.message, retry: { payload, titleHint } });
-        if (err.status === 0) checkHealth().then(setHealth);
+        if (err.status === 0 || err.status === 502 || err.status === 504) refreshHealth(true);
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null;
@@ -426,10 +445,18 @@ export default function App() {
     toast(failed.size ? `Deleted ${ids.length - failed.size} chats; ${failed.size} couldn't be reached.` : "All chats deleted", failed.size ? "error" : "success");
   }
 
+  /** Returns an error message for the settings field, or null when saved. */
   const handleApiUrl = (url) => {
-    setApiUrl(url);
-    setApiUrlState(getApiUrl());
-    checkHealth().then(setHealth);
+    const error = setApiUrl(url);
+    if (error) return error;
+    const next = getApiUrl();
+    if (next !== apiUrl) {
+      setApiUrlState(next);
+      setHealth(null);
+      refreshHealth(true);
+      toast(`Backend set to ${describeApiUrl(next)}`, "success");
+    }
+    return null;
   };
 
   const renameSession = (id, title) => setSessions((list) => list.map((s) => (s.id === id ? { ...s, title } : s)));
@@ -535,7 +562,7 @@ export default function App() {
             </button>
           )}
           <h1 className="chat-title" title={chatTitle}>{chatTitle}</h1>
-          <HealthPill health={health} apiUrl={apiUrl} />
+          <HealthPill health={health} apiUrl={apiUrl} waking={waking} />
           <div className="topbar-actions">
             {messages.length > 0 && (
               <button type="button" className="icon-btn" onClick={exportChat} aria-label="Export conversation" title="Export as Markdown">
@@ -671,6 +698,7 @@ export default function App() {
         onClearHistory={clearHistory}
         sessionCount={sessions.length}
         apiUrl={apiUrl}
+        apiOverridden={hasApiOverride()}
         onApiUrl={handleApiUrl}
         healthStatus={health}
       />

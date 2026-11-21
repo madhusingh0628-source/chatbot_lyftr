@@ -29,15 +29,25 @@ class Settings:
     models: tuple[str, ...] = ()    # optional per-key models (LLM_MODELS), same order as keys
     llm_timeout: float = 30.0       # seconds per provider call (LLM_TIMEOUT)
     max_history_messages: int = 100 # past messages sent to the LLM; 0 = unlimited (MAX_HISTORY_MESSAGES)
+    allowed_origin_regex: str | None = None  # e.g. Vercel preview URLs (ALLOWED_ORIGIN_REGEX)
+    rate_limit_per_minute: int = 0  # /chat requests per client per minute; 0 = off (RATE_LIMIT_PER_MINUTE)
+    rate_limit_global_per_minute: int = 0  # /chat requests per minute for everyone; 0 = off
 
     @property
     def db_path(self) -> str:
-        """Turn 'sqlite:////data/app.db' into '/data/app.db'."""
+        """Storage target for app.db: 'sqlite:////data/app.db' -> '/data/app.db';
+        a postgres:// or postgresql:// URL is passed through unchanged."""
         url = self.database_url
+        if url.startswith(("postgres://", "postgresql://")):
+            return url
         prefix = "sqlite:///"
         if not url.startswith(prefix):
-            raise ValueError("DATABASE_URL must start with sqlite:///")
+            raise ValueError("DATABASE_URL must start with sqlite:/// or postgresql://")
         return url[len(prefix):]
+
+    @property
+    def uses_sqlite(self) -> bool:
+        return self.database_url.startswith("sqlite:///")
 
     def model_for(self, index: int) -> str:
         """Model used with key number `index` (0-based). Falls back to LLM_MODEL."""
@@ -75,4 +85,7 @@ def load_settings() -> Settings:
         models=tuple(_split(os.getenv("LLM_MODELS", ""))),
         llm_timeout=max(1.0, _float("LLM_TIMEOUT", 30.0)),
         max_history_messages=max(0, _int("MAX_HISTORY_MESSAGES", 100)),
+        allowed_origin_regex=os.getenv("ALLOWED_ORIGIN_REGEX", "").strip() or None,
+        rate_limit_per_minute=max(0, _int("RATE_LIMIT_PER_MINUTE", 0)),
+        rate_limit_global_per_minute=max(0, _int("RATE_LIMIT_GLOBAL_PER_MINUTE", 0)),
     )

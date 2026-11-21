@@ -3,3 +3,5 @@ uvicorn[standard]==0.54.0
 litellm==1.80.17   # newer 1.104-1.110 crash on cache hits without proxy extras (tested)
 pydantic==2.14.4
 python-dotenv>=1.0.0,<2.0   # config.py loads .env files (was missing)
+psycopg[binary]>=3.2,<4      # PostgreSQL driver (used when DATABASE_URL is postgresql://)
+psycopg-pool>=3.2,<4

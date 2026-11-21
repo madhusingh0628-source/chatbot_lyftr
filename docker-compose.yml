@@ -14,6 +14,8 @@ services:
       ENABLE_FAILURE_SIMULATION: ${ENABLE_FAILURE_SIMULATION:-true}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-30}
       MAX_HISTORY_MESSAGES: ${MAX_HISTORY_MESSAGES:-100}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-0}
+      RATE_LIMIT_GLOBAL_PER_MINUTE: ${RATE_LIMIT_GLOBAL_PER_MINUTE:-0}
     volumes:
       - chatbot-data:/data   # SQLite file survives container restarts and rebuilds
     restart: unless-stopped

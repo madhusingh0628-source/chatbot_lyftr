@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "../icons.jsx";
 import { Modal, ModalHeader } from "./Overlay.jsx";
 import { modKey } from "../utils.js";
+import { defaultApiUrl, describeApiUrl } from "../api.js";
 
 export const SYSTEM_PROMPT_PRESETS = [
   { label: "Concise", prompt: "You are a helpful assistant. Keep all answers strictly under 2 sentences." },
@@ -41,10 +42,54 @@ function Toggle({ checked, onChange, label, description }) {
   );
 }
 
+/** Edits a draft; nothing is saved (or health-checked) until Save / Enter. */
+function BackendField({ apiUrl, overridden, onSave, health, open }) {
+  const [draft, setDraft] = useState(apiUrl);
+  const [error, setError] = useState(null);
+  useEffect(() => { if (open) { setDraft(apiUrl); setError(null); } }, [open, apiUrl]);
+
+  const dirty = draft.trim() !== apiUrl;
+  const save = (value = draft) => setError(onSave(value));
+  const status = !health ? ["checking", "Checking…"] : health.reachable ? ["ok", "Connected"] : ["bad", "Unreachable"];
+
+  return (
+    <section className="settings-section">
+      <h3><Icon name="monitor" size={15} /> Backend connection</h3>
+      <p className="section-desc">
+        Advanced: where this app sends requests. Leave it on the default unless you run your own backend.
+      </p>
+      <form className="backend-row" onSubmit={(e) => { e.preventDefault(); save(); }}>
+        <input
+          type="text"
+          inputMode="url"
+          spellCheck={false}
+          autoComplete="off"
+          className="text-input"
+          value={draft}
+          aria-label="Backend URL"
+          aria-invalid={Boolean(error) || undefined}
+          placeholder={`Default — ${describeApiUrl(defaultApiUrl())}`}
+          onChange={(e) => { setDraft(e.target.value); setError(null); }}
+        />
+        <button type="submit" className="btn btn-primary btn-sm" disabled={!dirty}>Save</button>
+      </form>
+      {error && <p className="field-error" role="alert">{error}</p>}
+      <div className="field-footer">
+        <span className={`conn-status ${status[0]}`}>● {status[1]} · {describeApiUrl(apiUrl)}</span>
+        {overridden && (
+          <button type="button" className="link-btn" onClick={() => { setDraft(""); save(""); }}>
+            Reset to default
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function SettingsDialog({
   open, onClose, systemPrompt, onSystemPrompt, simulate, onSimulate, simulationAvailable,
   prefs, onPref, speechSupported, theme, onTheme, onClearHistory, sessionCount,
-  apiUrl, onApiUrl, healthStatus,
+  apiUrl, apiOverridden, onApiUrl, healthStatus,
 }) {
   const [confirmClear, setConfirmClear] = useState(false);
   useEffect(() => { if (!open) setConfirmClear(false); }, [open]);
@@ -56,31 +101,6 @@ export function SettingsDialog({
     <Modal open={open} onClose={onClose} title="Settings" className="settings-modal">
       <ModalHeader title="Settings" subtitle="Changes apply to your next message." onClose={onClose} />
       <div className="modal-body">
-        <section className="settings-section">
-          <h3><Icon name="sliders" size={15} /> Backend API server</h3>
-          <p className="section-desc">
-            Base URL of the FastAPI backend service.
-          </p>
-          <div className="field">
-            <input
-              type="text"
-              className="text-input"
-              value={apiUrl || ""}
-              placeholder="e.g. https://chatbot-backend.onrender.com"
-              onChange={(e) => onApiUrl(e.target.value)}
-            />
-            <div className="field-footer">
-              <span style={{ fontSize: "12px", color: healthStatus?.reachable ? "var(--success, #10b981)" : "var(--warn, #f59e0b)" }}>
-                {healthStatus?.reachable ? "● Connected" : "○ Disconnected / Unreachable"}
-              </span>
-              {apiUrl && (
-                <button type="button" className="link-btn" onClick={() => onApiUrl("")}>
-                  Reset to default
-                </button>
-              )}
-            </div>
-          </div>
-        </section>
         <section className="settings-section">
           <h3><Icon name="sliders" size={15} /> Custom instructions</h3>
           <p className="section-desc">
@@ -193,6 +213,8 @@ export function SettingsDialog({
             ))}
           </dl>
         </section>
+
+        <BackendField apiUrl={apiUrl} overridden={apiOverridden} onSave={onApiUrl} health={healthStatus} open={open} />
 
         <section className="settings-section danger-zone">
           <h3><Icon name="trash" size={15} /> Data</h3>

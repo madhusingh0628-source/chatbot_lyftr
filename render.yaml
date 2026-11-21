@@ -7,7 +7,8 @@ services:
     region: oregon
     rootDir: backend
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # ONE worker on purpose: the response cache and the rate limiter live in process memory.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
@@ -18,27 +19,44 @@ services:
         value: groq/openai/gpt-oss-20b
       - key: LLM_MODELS
         value: groq/openai/gpt-oss-20b,gemini/gemini-3.5-flash-lite
+      # The free plan's disk is wiped on every redeploy/restart, so a SQLite file here
+      # loses all chat history. Paste a hosted Postgres URL (e.g. Neon or Supabase free tier):
+      #   postgresql://user:password@host/dbname?sslmode=require
       - key: DATABASE_URL
-        value: sqlite:///./app.db
+        sync: false
+      # Exact origins allowed to call the API from a browser. The Vercel site doesn't need
+      # this (it proxies /chat, /health and /sessions through vercel.json, same origin),
+      # but direct calls from these origins do.
       - key: ALLOWED_ORIGINS
-        value: "*"
+        value: https://chatbot-lyftr.vercel.app,http://localhost:5173,http://localhost:3000
+      # Only makes chosen keys fail for one request; it can't be used to spend quota.
       - key: ENABLE_FAILURE_SIMULATION
         value: "true"
       - key: DEFAULT_SYSTEM_PROMPT
         value: You are a helpful, concise assistant.
+      - key: LLM_TIMEOUT
+        value: "30"
+      - key: MAX_HISTORY_MESSAGES
+        value: "100"
+      # Protects the LLM key quota on a public URL (429 + Retry-After when exceeded).
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "20"
+      - key: RATE_LIMIT_GLOBAL_PER_MINUTE
+        value: "120"
 
-  # Frontend static site (React / Vite)
-  # Note: Render static sites are served globally via CDN (no region or plan required).
+  # Optional: the frontend as a Render static site (the main frontend is on Vercel).
+  # If you use it, add its https://<name>.onrender.com origin to ALLOWED_ORIGINS above.
   - type: web
     name: chatbot-frontend
     runtime: static
     rootDir: frontend
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci && npm run build
     staticPublishPath: ./dist
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
     envVars:
+      # Must be the backend's PUBLIC address (fromService "host" is only the private hostname).
       - key: VITE_API_URL
-        value: https://chatbot-backend.onrender.com
+        value: https://chatbot-backend-3k2m.onrender.com

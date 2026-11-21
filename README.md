@@ -73,11 +73,24 @@ Frontend runs at `http://127.0.0.1:5173`.
 | `LLM_API_KEYS` | Comma-separated key pool (ordered: `key_1`, `key_2`, ...) | `gsk_...,AQ....` |
 | `LLM_MODEL` | Default LiteLLM model provider/name | `groq/openai/gpt-oss-20b` |
 | `LLM_MODELS` | Optional per-key models (matched to key order) | `groq/openai/gpt-oss-20b,gemini/gemini-3.5-flash-lite` |
-| `DATABASE_URL` | SQLite database URI (`sqlite:////data/app.db` in Docker) | `sqlite:///./app.db` |
-| `ALLOWED_ORIGINS` | Permitted CORS origins for the frontend | `http://localhost:3000,http://localhost:5173` |
+| `DATABASE_URL` | SQLite file (`sqlite:////data/app.db` in Docker) **or** a PostgreSQL URL (`postgresql://user:pass@host/db?sslmode=require`). Use Postgres on hosts whose disk is wiped on restart, such as Render's free plan | `sqlite:///./app.db` |
+| `ALLOWED_ORIGINS` | Exact CORS origins allowed to call the API from a browser | `http://localhost:3000,http://localhost:5173` |
+| `ALLOWED_ORIGIN_REGEX` | Optional regex for extra origins (e.g. preview deployments) | unset |
+| `RATE_LIMIT_PER_MINUTE` | `/chat` requests per client per minute (`0` = off). Over the limit → `429` + `Retry-After` | `0` (Render: `20`) |
+| `RATE_LIMIT_GLOBAL_PER_MINUTE` | `/chat` requests per minute across all clients (`0` = off) | `0` (Render: `120`) |
+| `LLM_TIMEOUT` | Seconds per provider call before failing over | `30` |
+| `MAX_HISTORY_MESSAGES` | Past messages sent to the LLM per request (`0` = all) | `100` |
 | `ENABLE_FAILURE_SIMULATION` | Enables `X-Simulate-Failure` test header | `true` |
 | `DEFAULT_SYSTEM_PROMPT` | Fallback system prompt for sessions | `You are a helpful, concise assistant.` |
 | `VITE_API_URL` | Base URL of backend called by frontend | `http://localhost:8000` |
+
+---
+
+### Deploying (Render backend + Vercel frontend)
+1. **Database**: create a free Postgres database (e.g. [Neon](https://neon.tech) or Supabase) and copy its connection string.
+2. **Render → chatbot-backend → Environment**: set `DATABASE_URL` to that string, set `ALLOWED_ORIGINS=https://chatbot-lyftr.vercel.app,http://localhost:5173,http://localhost:3000`, `RATE_LIMIT_PER_MINUTE=20` and `RATE_LIMIT_GLOBAL_PER_MINUTE=120` (all in `render.yaml` if you deploy as a Blueprint). Redeploy. `/health` should show `"database_ok": true`.
+3. **Vercel**: no environment variables needed. `vercel.json` proxies `/chat`, `/health` and `/sessions/*` to Render, so the browser only talks to the Vercel origin (no CORS). If you change the Render URL, update it in `vercel.json` (both copies) and `DEFAULT_BACKEND` in `frontend/src/api.js`.
+4. Render's free plan sleeps after ~15 minutes idle; the first request then takes up to a minute. The UI shows **"Waking up…"** instead of "Offline" while that happens.
 
 ---
 
@@ -94,9 +107,9 @@ Frontend runs at `http://127.0.0.1:5173`.
 - **Simulation Isolation**: When the `X-Simulate-Failure` header is present, cache reads are bypassed (`cache={"no-cache": True}`) so test headers genuinely exercise the key pool.
 - **Exact Contract Compliance**: On a cache hit, `resolution_source` reports `"LLM_CACHE"`, `key_id` reports `null`, and `fallback_attempts` is `0`. Input and output token counts are preserved from the original generation.
 
-### SQLite Session Storage
-- **Zero-ORM, Pure SQLite**: Implemented with Python's standard `sqlite3` driver for speed, zero external dependencies, and minimal memory footprint.
-- **Persistent Storage**: Mapped via Docker named volume `chatbot-data` mounted at `/data`, so history survives container rebuilds and restarts.
+### SQLite Session Storage (PostgreSQL in production)
+- **Zero-ORM**: Plain SQL with Python's standard `sqlite3` driver locally; the same queries run on PostgreSQL (`psycopg` with a small connection pool) when `DATABASE_URL` is a `postgresql://` URL.
+- **Persistent Storage**: Locally, the Docker named volume `chatbot-data` mounted at `/data` keeps history across rebuilds and restarts. Render's free plan has **no persistent disk**, so the deployed backend uses hosted Postgres instead; a SQLite file there would be wiped on every redeploy/restart (the backend logs a warning if you try).
 - **Schema Auto-Creation**: Tables and indices (`messages`, `session_settings`, and `idx_messages_session`) are created automatically on startup.
 - **Atomic Exchanges**: User prompt and assistant reply are saved together in a single database transaction, preventing orphaned or desynchronized conversation states.
 
