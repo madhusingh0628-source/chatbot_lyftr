@@ -44,6 +44,7 @@ function Toggle({ checked, onChange, label, description }) {
 export function SettingsDialog({
   open, onClose, systemPrompt, onSystemPrompt, simulate, onSimulate, simulationAvailable,
   prefs, onPref, speechSupported, theme, onTheme, onClearHistory, sessionCount,
+  apiUrl, onApiUrl, healthStatus,
 }) {
   const [confirmClear, setConfirmClear] = useState(false);
   useEffect(() => { if (!open) setConfirmClear(false); }, [open]);
@@ -55,6 +56,31 @@ export function SettingsDialog({
     <Modal open={open} onClose={onClose} title="Settings" className="settings-modal">
       <ModalHeader title="Settings" subtitle="Changes apply to your next message." onClose={onClose} />
       <div className="modal-body">
+        <section className="settings-section">
+          <h3><Icon name="sliders" size={15} /> Backend API server</h3>
+          <p className="section-desc">
+            Base URL of the FastAPI backend service.
+          </p>
+          <div className="field">
+            <input
+              type="text"
+              className="text-input"
+              value={apiUrl || ""}
+              placeholder="e.g. https://chatbot-backend.onrender.com"
+              onChange={(e) => onApiUrl(e.target.value)}
+            />
+            <div className="field-footer">
+              <span style={{ fontSize: "12px", color: healthStatus?.reachable ? "var(--success, #10b981)" : "var(--warn, #f59e0b)" }}>
+                {healthStatus?.reachable ? "● Connected" : "○ Disconnected / Unreachable"}
+              </span>
+              {apiUrl && (
+                <button type="button" className="link-btn" onClick={() => onApiUrl("")}>
+                  Reset to default
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
         <section className="settings-section">
           <h3><Icon name="sliders" size={15} /> Custom instructions</h3>
           <p className="section-desc">

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { API_URL, checkHealth, deleteSession, getSessionMessages, newSessionId, sendChat } from "./api.js";
+import { checkHealth, deleteSession, getApiUrl, getSessionMessages, newSessionId, sendChat, setApiUrl } from "./api.js";
 import {
   MAX_IMAGES, MAX_MESSAGE, charCount, composeMessage, isImage, isTextFile, parseStoredUserMessage,
   readImageFile, readTextFile,
@@ -74,6 +74,7 @@ export default function App() {
   const [pending, setPending] = useState(null);          // { startedAt } while a reply is on its way
   const [loadingSession, setLoadingSession] = useState(null);
   const [health, setHealth] = useState(null);
+  const [apiUrl, setApiUrlState] = useState(getApiUrl);
   const [sessions, setSessions] = useState(loadSessions);
   const [sidebarOpen, setSidebarOpen] = useState(() => prefs.sidebarOpen && !globalThis.matchMedia?.(NARROW_QUERY).matches);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -424,6 +425,12 @@ export default function App() {
     toast(failed.size ? `Deleted ${ids.length - failed.size} chats; ${failed.size} couldn't be reached.` : "All chats deleted", failed.size ? "error" : "success");
   }
 
+  const handleApiUrl = (url) => {
+    setApiUrl(url);
+    setApiUrlState(getApiUrl());
+    checkHealth().then(setHealth);
+  };
+
   const renameSession = (id, title) => setSessions((list) => list.map((s) => (s.id === id ? { ...s, title } : s)));
   const togglePin = (id) => setSessions((list) => list.map((s) => (s.id === id ? { ...s, pinned: !s.pinned } : s)));
 
@@ -662,6 +669,9 @@ export default function App() {
         onTheme={setTheme}
         onClearHistory={clearHistory}
         sessionCount={sessions.length}
+        apiUrl={apiUrl}
+        onApiUrl={handleApiUrl}
+        healthStatus={health}
       />
       <Lightbox image={lightbox} onClose={() => setLightbox(null)} />
       <Toasts toasts={toasts} onDismiss={dismissToast} />

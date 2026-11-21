@@ -1,10 +1,35 @@
-// Backend base URL, baked in at build time (Vite exposes only VITE_* variables).
-const rawUrl = (import.meta.env.VITE_API_URL || "").trim();
-let resolved = rawUrl || "http://localhost:8000";
-if (resolved && !resolved.startsWith("http://") && !resolved.startsWith("https://")) {
-  resolved = `https://${resolved}`;
+// Backend base URL, baked in at build time or overridden at runtime
+export function getApiUrl() {
+  const custom = (typeof window !== "undefined" && localStorage.getItem("API_URL") || "").trim();
+  if (custom) return custom.replace(/\/+$/, "");
+  const rawUrl = (import.meta.env.VITE_API_URL || "").trim();
+  if (rawUrl) {
+    let resolved = rawUrl;
+    if (!resolved.startsWith("http://") && !resolved.startsWith("https://")) {
+      resolved = `https://${resolved}`;
+    }
+    return resolved.replace(/\/+$/, "");
+  }
+  if (typeof window !== "undefined" && window.location.hostname.includes("onrender.com")) {
+    return "https://chatbot-backend.onrender.com";
+  }
+  return "http://localhost:8000";
 }
-export const API_URL = resolved.replace(/\/+$/, "");
+
+export function setApiUrl(url) {
+  if (typeof window === "undefined") return;
+  if (!url || !url.trim()) {
+    localStorage.removeItem("API_URL");
+  } else {
+    let resolved = url.trim();
+    if (!resolved.startsWith("http://") && !resolved.startsWith("https://")) {
+      resolved = `https://${resolved}`;
+    }
+    localStorage.setItem("API_URL", resolved.replace(/\/+$/, ""));
+  }
+}
+
+export const API_URL = getApiUrl();
 
 // New random id on every page load -> new session (spec: "A new session starts on each page load").
 export function newSessionId() {
@@ -42,7 +67,7 @@ function readableError(status, body) {
   return `Error ${status}: something went wrong.`;
 }
 
-const unreachable = () => new ApiError(`Cannot reach the backend at ${API_URL}. Is it running?`, 0);
+const unreachable = () => new ApiError(`Cannot reach the backend at ${getApiUrl()}. Is it running?`, 0);
 
 async function request(path, { timeoutMs, signal, ...init } = {}) {
   // combine the caller's signal (Stop button) with an optional timeout
@@ -55,8 +80,9 @@ async function request(path, { timeoutMs, signal, ...init } = {}) {
   const timer = timeoutMs ? setTimeout(() => controller.abort(new DOMException("timeout", "TimeoutError")), timeoutMs) : null;
 
   let res;
+  const baseUrl = getApiUrl();
   try {
-    res = await fetch(`${API_URL}${path}`, { ...init, signal: controller.signal });
+    res = await fetch(`${baseUrl}${path}`, { ...init, signal: controller.signal });
   } catch (err) {
     if (signal?.aborted) throw new DOMException("Request stopped", "AbortError");
     if (controller.signal.aborted) throw new ApiError("The server took too long to answer. Please try again.", 408);
