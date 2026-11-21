@@ -1,5 +1,21 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
+    {
+      "source": "/health",
+      "destination": "https://chatbot-backend-3k2m.onrender.com/health"
+    },
+    {
+      "source": "/chat",
+      "destination": "https://chatbot-backend-3k2m.onrender.com/chat"
+    },
+    {
+      "source": "/sessions/:path*",
+      "destination": "https://chatbot-backend-3k2m.onrender.com/sessions/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/"
+    }
   ]
 }

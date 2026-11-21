@@ -69,7 +69,7 @@ def load_settings() -> Settings:
         api_keys=_split(os.getenv("LLM_API_KEYS", "")),
         model=os.getenv("LLM_MODEL", "gemini/gemini-2.0-flash"),
         database_url=os.getenv("DATABASE_URL", "sqlite:///./app.db"),
-        allowed_origins=_split(os.getenv("ALLOWED_ORIGINS", "*")),
+        allowed_origins=_split(os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173,https://chatbot-lyftr.vercel.app")),
         enable_failure_simulation=os.getenv("ENABLE_FAILURE_SIMULATION", "false").strip().lower() in ("1", "true", "yes"),
         default_system_prompt=os.getenv("DEFAULT_SYSTEM_PROMPT", "You are a helpful, concise assistant."),
         models=tuple(_split(os.getenv("LLM_MODELS", ""))),

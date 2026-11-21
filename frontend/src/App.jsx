@@ -39,7 +39,7 @@ function useMediaQuery(query) {
 function HealthPill({ health, apiUrl }) {
   let state = "checking";
   let label = "Connecting…";
-  const targetUrl = apiUrl || getApiUrl();
+  const targetUrl = apiUrl || getApiUrl() || (typeof window !== "undefined" ? window.location.origin : "");
   let detail = `Checking ${targetUrl}`;
   if (health) {
     if (!health.reachable) { state = "down"; label = "Offline"; detail = `Can't reach ${targetUrl}`; }

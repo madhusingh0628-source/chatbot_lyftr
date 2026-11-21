@@ -10,8 +10,14 @@ export function getApiUrl() {
     }
     return resolved.replace(/\/+$/, "");
   }
-  if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
-    return "http://localhost:8000";
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      return "http://localhost:8000";
+    }
+    if (host.includes("vercel.app")) {
+      return ""; // Use same-origin relative paths proxied by Vercel rewrites to avoid CORS
+    }
   }
   return "https://chatbot-backend-3k2m.onrender.com";
 }
