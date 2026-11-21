@@ -67,6 +67,12 @@ function readableError(status, body) {
       })
       .join("; ");
   }
+  if (status === 502) {
+    return "The server or vision gateway timed out. Please try sending a slightly smaller image or click Retry.";
+  }
+  if (status === 504) {
+    return "Gateway timeout. The upstream AI provider took too long to answer. Please try again.";
+  }
   if (status === 404 && detail === "session not found") return "This conversation was not found on the server.";
   if (status === 429) return "Too many requests. Please slow down and try again.";
   if (typeof detail === "string") return `Error ${status}: ${detail}`;
@@ -89,10 +95,28 @@ async function request(path, { timeoutMs, signal, ...init } = {}) {
   const baseUrl = getApiUrl();
   try {
     res = await fetch(`${baseUrl}${path}`, { ...init, signal: controller.signal });
+    // If proxied route gave a 502/504 gateway timeout, retry directly against Render
+    if ((res.status === 502 || res.status === 504) && baseUrl === "") {
+      try {
+        const directRes = await fetch(`https://chatbot-backend-3k2m.onrender.com${path}`, { ...init, signal: controller.signal });
+        if (directRes.ok) res = directRes;
+      } catch {
+        // keep original response
+      }
+    }
   } catch (err) {
     if (signal?.aborted) throw new DOMException("Request stopped", "AbortError");
     if (controller.signal.aborted) throw new ApiError("The server took too long to answer. Please try again.", 408);
-    throw unreachable();
+    // If relative request had network failure, try direct Render
+    if (baseUrl === "") {
+      try {
+        res = await fetch(`https://chatbot-backend-3k2m.onrender.com${path}`, { ...init, signal: controller.signal });
+      } catch {
+        throw unreachable();
+      }
+    } else {
+      throw unreachable();
+    }
   } finally {
     if (timer) clearTimeout(timer);
     signal?.removeEventListener("abort", onAbort);

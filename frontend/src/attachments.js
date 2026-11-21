@@ -3,7 +3,7 @@
 export const MAX_MESSAGE = 4000;           // backend limit (after trimming)
 export const MAX_IMAGES = 3;               // backend limit
 const MAX_TEXT_FILE_BYTES = 200_000;
-const IMAGE_MAX_SIDE = 1024;               // resize big photos -> small, fast requests
+const IMAGE_MAX_SIDE = 800;                // resize photos -> compact, fast requests without timeouts
 const MAX_IMAGE_INPUT_BYTES = 25_000_000;  // refuse absurdly large originals before decoding
 
 export const TEXT_EXTENSIONS = [
@@ -67,7 +67,7 @@ export function readImageFile(file) {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.75);
       resolve({ id: nextAttachmentId++, kind: "image", name: file.name, size: Math.round(dataUrl.length * 0.75), dataUrl });
     };
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(`${file.name} is not a readable image.`)); };
