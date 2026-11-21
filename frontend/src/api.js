@@ -10,10 +10,10 @@ export function getApiUrl() {
     }
     return resolved.replace(/\/+$/, "");
   }
-  if (typeof window !== "undefined" && window.location.hostname.includes("onrender.com")) {
-    return "https://chatbot-backend.onrender.com";
+  if (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")) {
+    return "http://localhost:8000";
   }
-  return "http://localhost:8000";
+  return "https://chatbot-backend-3k2m.onrender.com";
 }
 
 export function setApiUrl(url) {

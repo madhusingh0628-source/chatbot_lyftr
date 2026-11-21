@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { checkHealth, deleteSession, getApiUrl, getSessionMessages, newSessionId, sendChat, setApiUrl } from "./api.js";
+import { API_URL, checkHealth, deleteSession, getApiUrl, getSessionMessages, newSessionId, sendChat, setApiUrl } from "./api.js";
 import {
   MAX_IMAGES, MAX_MESSAGE, charCount, composeMessage, isImage, isTextFile, parseStoredUserMessage,
   readImageFile, readTextFile,
@@ -36,12 +36,13 @@ function useMediaQuery(query) {
   return matches;
 }
 
-function HealthPill({ health }) {
+function HealthPill({ health, apiUrl }) {
   let state = "checking";
   let label = "Connecting…";
-  let detail = `Checking ${API_URL}`;
+  const targetUrl = apiUrl || getApiUrl();
+  let detail = `Checking ${targetUrl}`;
   if (health) {
-    if (!health.reachable) { state = "down"; label = "Offline"; detail = `Can't reach ${API_URL}`; }
+    if (!health.reachable) { state = "down"; label = "Offline"; detail = `Can't reach ${targetUrl}`; }
     else if (!health.ok) {
       state = "degraded"; label = "Degraded";
       detail = health.keys === 0 ? "Backend is up but has no API keys configured" : "Backend is up but its database is unavailable";
@@ -522,7 +523,7 @@ export default function App() {
         searchRef={searchRef}
         messages={messages}
         sessionId={sessionId}
-        apiUrl={API_URL}
+        apiUrl={apiUrl}
         onToast={toast}
       />
 
@@ -534,7 +535,7 @@ export default function App() {
             </button>
           )}
           <h1 className="chat-title" title={chatTitle}>{chatTitle}</h1>
-          <HealthPill health={health} />
+          <HealthPill health={health} apiUrl={apiUrl} />
           <div className="topbar-actions">
             {messages.length > 0 && (
               <button type="button" className="icon-btn" onClick={exportChat} aria-label="Export conversation" title="Export as Markdown">

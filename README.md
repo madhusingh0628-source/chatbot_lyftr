@@ -6,9 +6,9 @@ Production-ready, fault-tolerant chatbot system with automated multi-key failove
 
 ## 1. Live URLs
 
-- **Frontend**: https://chatbot-lyftr.vercel.app *(or your live deployment URL on Vercel / Netlify / Render)*
-- **Backend API**: https://chatbot-backend.onrender.com *(or your live deployment URL on Render / Railway / Fly.io)*
-- **Health Check**: https://chatbot-backend.onrender.com/health
+- **Frontend**: https://chatbot-lyftr.vercel.app
+- **Backend API**: https://chatbot-backend-3k2m.onrender.com
+- **Health Check**: https://chatbot-backend-3k2m.onrender.com/health
 - **Public GitHub Repository**: https://github.com/madhusingh0628-source/chatbot_lyftr
 
 ---
