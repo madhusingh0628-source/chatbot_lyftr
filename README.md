@@ -1,174 +1,165 @@
-# Production-Ready Resilient LLM Chatbot
+# LLM Chatbot with Key Failover and Response Caching
 
-A high-performance, fault-tolerant chatbot system built with **FastAPI**, **React (Vite)**, and **LiteLLM**. Designed for production resilience with automated multi-key failover, vision routing, voice input/output, in-memory response caching, token usage tracking, and interactive resilience demo controls.
-
----
-
-## 🌟 Key Highlights & Graded Features
-
-### 1. Multi-Provider Key Pool & Automatic Failover
-- **Resilient Fallback**: Configured with a pool of LLM providers (Primary: Groq `openai/gpt-oss-20b`, Secondary: Google Gemini `gemini-3.5-flash-lite`).
-- **Zero Interruption**: If the primary key encounters transient errors (401, 403, 408, 429 rate limit, 5xx server errors), the gateway instantly tries the next key in the pool.
-- **Failover Path Replay**: Under any reply that switched keys, an animated chip strip shows the failure sequence: `key_1 ✗` ➔ `key_2 ✓`.
-- **Segmented Failover Control Panel**: One-click toggles: `Normal`, `key_1 → 429`, `key_1 → 500`, and `All keys down (*=429)`. The composer glows red while a simulation mode is active.
-
-### 2. 📎 Files & 🖼 Multimodal Vision Routing
-- **Three Ways to Attach**: Attach files via the `📎` button, drag & drop directly onto the chat window, or paste an image from your clipboard (`Ctrl+V`).
-- **Text & Code File Ingestion**: Reads `.txt`, `.csv`, `.md`, `.py`, `.json`, `.js`, `.ts`, `.html`, `.css`, etc. in the browser and formats them cleanly into the prompt within the 4,000-character budget.
-- **Smart Image Downscaling**: Resizes large images on the fly via `<canvas>` to at most 1,024 px on the longest side before sending as base64 data URLs.
-- **Vision-Aware Model Routing**: Automatically skips text-only models (like Groq `openai/gpt-oss-20b` or `llama-3.1-8b-instant`) and routes images directly to vision-capable models (like `gemini/gemini-3.5-flash-lite`). Skipping text-only keys does **not** count as a failure (`fallback_attempts: 0`).
-- **Lightweight Database Footprint**: Images are never stored directly in the SQLite database; history stores a clean text marker `[N image(s) attached]`.
-
-### 3. 🎤 Voice Input & 🔊 Text-to-Speech
-- **Speak Your Message (Dictation)**: Built-in speech recognition via the browser's `SpeechRecognition` API. The microphone button pulses red while listening and automatically transcribes words directly into the input box.
-- **Read Replies Aloud**: A `🔊` button on every assistant bubble to speak the answer aloud using `SpeechSynthesis`.
-- **Auto-Read Replies**: Optional toggle in Settings to automatically read out every incoming reply.
-- **Zero Extra Dependencies**: Uses native browser speech APIs with graceful fallbacks.
-
-### 4. ⚡ Built-in In-Memory Caching & Visual Latency Bar
-- **Fast Deduplication**: Cached responses skip network latency completely, dropping response times from ~600ms down to <5ms.
-- **Cache-Hit Gold Flash**: Cached responses pulse gold with an illuminated `⚡ LLM_CACHE` badge.
-- **Visual Latency Bar**: A speed track under every reply visualizes `latency_ms` (cached queries show a tiny gold sliver; live calls show a full green bar).
-- **Live Caching Analytics**: The session stats strip updates in real time showing total replies, cache hit percentage (e.g., `33% cached`), token counts, and comparative latency (`live avg 580 ms vs cache avg 3 ms`).
-
-### 5. Interactive UI Polish & Micro-Interactions
-- **Slide-in Bubble Animations**: User messages slide in smoothly from the right; assistant replies glide in from the left.
-- **Bouncing Dot Typing Indicator**: Modern 3-dot wave animation while the LLM is thinking.
-- **Error Shake & One-Click Retry**: Error bubbles shake gently on 422/503 and provide an instant `Retry` button that resends the prompt.
-- **Suggested Starter Chips**: Clickable starter questions on the empty screen for quick one-click testing of cache and failover.
-- **Contract Character Counter**: Displays `X / 4,000` under the input box, turning amber at 90% and red over 4,000 characters to reflect the 422 validation rule.
-- **Copy Reply Button**: One-click copy icon on assistant messages.
-- **Backend Health Beacon**: Live status beacon in the header driven by `GET /health` polling (pulsing green when healthy, red when offline).
-- **Accessibility**: Full `@media (prefers-reduced-motion: reduce)` support.
+Production-ready, fault-tolerant chatbot system with automated multi-key failover, in-memory response caching, token usage tracking, and multi-turn session persistence. Built with **FastAPI**, **React (Vite)**, **LiteLLM**, and **SQLite**.
 
 ---
 
-## 🛠️ Architecture & Multimodal Flow
+## 1. Live URLs
 
-```mermaid
-flowchart TD
-    Client["React Frontend (Vite) :5173"]
-    API["FastAPI Backend :8000"]
-    Cache["LiteLLM In-Memory Cache"]
-    DB[("SQLite Database app.db")]
-    Groq["Groq API (Text-Only: Key 1)"]
-    Gemini["Google Gemini API (Vision: Key 2)"]
-
-    Client -->|"POST /chat\n(Text + optional Images)"| API
-    Client -->|"GET /sessions/:id/messages"| API
-    Client -->|"GET /health"| API
-    API <--> Cache
-    API -->|"Persist Turn (Marker only for Images)"| DB
-    API -->|"Text Query"| Groq
-    API -->|"Multimodal Query (Vision-aware)"| Gemini
-    Groq --"Rate Limit / Error"--> API
-    API -->|"Automatic Failover"| Gemini
-```
+- **Frontend**: https://chatbot-lyftr.vercel.app *(or your live deployment URL on Vercel / Netlify / Render)*
+- **Backend API**: https://chatbot-backend.onrender.com *(or your live deployment URL on Render / Railway / Fly.io)*
+- **Health Check**: https://chatbot-backend.onrender.com/health
+- **Public GitHub Repository**: https://github.com/madhusingh0628-source/chatbot_lyftr
 
 ---
 
-## 📋 API Contract
+## 2. Run locally: with Docker and without
 
-All endpoints strictly adhere to the specification contract:
+### With Docker (Recommended)
+The stack starts backend on port 8000 and frontend on port 3000 using multi-stage Dockerfiles and a named volume for SQLite persistence.
 
-### 1. `GET /health`
-Returns service health, configured key count, and cache status:
-```json
-{
-  "status": "ok",
-  "keys_configured": 2,
-  "cache_enabled": true
-}
+```bash
+# 1. Create environment file from example
+cp .env.example .env
+# Edit .env and insert your API keys
+
+# 2. Build and start services in background
+make up
+
+# 3. Stop services
+make down
+
+# 4. View logs
+make logs
 ```
-
-### 2. `POST /chat`
-Accepts user message, session ID, and optional base64 images, returning assistant reply and exact execution metadata:
-```json
-// Request
-{
-  "session_id": "s-example-123",
-  "message": "What is in this picture?",
-  "images": ["data:image/jpeg;base64,..."]
-}
-
-// Response (HTTP 200)
-{
-  "session_id": "s-example-123",
-  "reply": "This image shows...",
-  "metadata": {
-    "resolution_source": "LIVE_INFERENCE",
-    "model": "gemini/gemini-3.5-flash-lite",
-    "latency_ms": 720,
-    "input_tokens": 120,
-    "output_tokens": 45,
-    "key_id": "key_2",
-    "fallback_attempts": 0
-  }
-}
-```
-
-### 3. `GET /sessions/{session_id}/messages`
-Retrieves chronologically ordered messages and metadata:
-```json
-{
-  "session_id": "s-example-123",
-  "messages": [
-    { "role": "user", "content": "What is in this picture?\n[1 image(s) attached]" },
-    { "role": "assistant", "content": "This image shows...", "metadata": { ... } }
-  ]
-}
-```
+- Backend health check: `http://localhost:8000/health`
+- Frontend application: `http://localhost:3000`
 
 ---
 
-## 🚀 Running the Project
+### Without Docker
 
-### Prerequisites
-- Python 3.10+
-- Node.js 18+ and npm
-
-### 1. Configuration
-Create a `.env` file in the project root:
-```env
-LLM_API_KEYS=your-groq-key,your-gemini-key
-LLM_MODEL=groq/openai/gpt-oss-20b
-LLM_MODELS=groq/openai/gpt-oss-20b,gemini/gemini-3.5-flash-lite
-
-DATABASE_URL=sqlite:///./app.db
-ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173
-ENABLE_FAILURE_SIMULATION=true
-DEFAULT_SYSTEM_PROMPT=You are a helpful, concise assistant.
-VITE_API_URL=http://localhost:8000
-```
-
-### 2. Start Backend
+#### Backend Setup
 ```powershell
-cd chatbot/backend
+cd backend
+
+# Install dependencies
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+
+# Run server with Uvicorn
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
-Backend health check is accessible at `http://127.0.0.1:8000/health`.
+Backend runs at `http://127.0.0.1:8000`.
 
-### 3. Start Frontend
+#### Frontend Setup
 ```powershell
-cd chatbot/frontend
+cd frontend
+
+# Install npm dependencies
 npm install
+
+# Start Vite dev server
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
-Frontend UI will be running at `http://127.0.0.1:5173`.
+Frontend runs at `http://127.0.0.1:5173`.
 
 ---
 
-## 🧪 Running Automated Tests
+### Environment Variables
 
-Run the full pytest suite:
-```powershell
-cd chatbot/backend
-python -m pytest -v
-```
-All **63 test cases** pass across:
-- `test_api.py`: Endpoint shape, validation, 422s, CORS
-- `test_cache.py`: Exact-cache deduplication, isolation, latency advantage
-- `test_failover.py`: Multi-key failover, transient error retry, simulation headers
-- `test_images.py`: Vision routing, text-only skipping, SQLite marker storage, 422 on invalid images
-- `test_sessions.py`: Multi-turn context history, session isolation, database restarts
-- `test_tokens.py`: Token usage reporting, non-cumulative turn counting
+| Variable | Description | Default / Example |
+| :--- | :--- | :--- |
+| `LLM_API_KEYS` | Comma-separated key pool (ordered: `key_1`, `key_2`, ...) | `gsk_...,AQ....` |
+| `LLM_MODEL` | Default LiteLLM model provider/name | `groq/openai/gpt-oss-20b` |
+| `LLM_MODELS` | Optional per-key models (matched to key order) | `groq/openai/gpt-oss-20b,gemini/gemini-3.5-flash-lite` |
+| `DATABASE_URL` | SQLite database URI (`sqlite:////data/app.db` in Docker) | `sqlite:///./app.db` |
+| `ALLOWED_ORIGINS` | Permitted CORS origins for the frontend | `http://localhost:3000,http://localhost:5173` |
+| `ENABLE_FAILURE_SIMULATION` | Enables `X-Simulate-Failure` test header | `true` |
+| `DEFAULT_SYSTEM_PROMPT` | Fallback system prompt for sessions | `You are a helpful, concise assistant.` |
+| `VITE_API_URL` | Base URL of backend called by frontend | `http://localhost:8000` |
+
+---
+
+## 3. Design decisions: key fallback, caching, SQLite session storage
+
+### Key Fallback Architecture
+- **Failover Priority Chain**: Keys are organized into an ordered pool (`key_1`, `key_2`, ...). In this configuration, Key 1 is Groq (`groq/openai/gpt-oss-20b`) and Key 2 is Google Gemini (`gemini/gemini-3.5-flash-lite`).
+- **Failover Errors Detected**: The gateway intercepts transient and quota errors (`429 RateLimitError`, `401/403 AuthenticationError`, `408 Timeout`, `5xx InternalServerError / BadGateway / ServiceUnavailable`, and API connection drops).
+- **Graceful Failover**: When Key 1 fails with any of these statuses, the gateway records the fallback attempt and immediately delegates to Key 2. The client receives a successful HTTP 200 with `key_id: "key_2"` and `fallback_attempts: 1`.
+- **Atomic Failure Handling**: If all keys in the pool fail, the gateway raises `AllProvidersUnavailable`, returning HTTP 503 `{"detail": "all providers unavailable"}`. No half-saved states or corrupted turns are written to SQLite.
+
+### Response Caching
+- **Shared In-Memory Cache**: Powered by LiteLLM's local cache. The cache key is computed over the full conversation history (messages list) and the system prompt. Because the API key is excluded from the cache key, cached answers are instantly shared across all keys in the pool.
+- **Simulation Isolation**: When the `X-Simulate-Failure` header is present, cache reads are bypassed (`cache={"no-cache": True}`) so test headers genuinely exercise the key pool.
+- **Exact Contract Compliance**: On a cache hit, `resolution_source` reports `"LLM_CACHE"`, `key_id` reports `null`, and `fallback_attempts` is `0`. Input and output token counts are preserved from the original generation.
+
+### SQLite Session Storage
+- **Zero-ORM, Pure SQLite**: Implemented with Python's standard `sqlite3` driver for speed, zero external dependencies, and minimal memory footprint.
+- **Persistent Storage**: Mapped via Docker named volume `chatbot-data` mounted at `/data`, so history survives container rebuilds and restarts.
+- **Schema Auto-Creation**: Tables and indices (`messages`, `session_settings`, and `idx_messages_session`) are created automatically on startup.
+- **Atomic Exchanges**: User prompt and assistant reply are saved together in a single database transaction, preventing orphaned or desynchronized conversation states.
+
+---
+
+## 4. Verification: how to see failover, cache hits and per-message token usage
+
+### How to Verify Failover
+1. **Via UI**: In the Settings or Failover control panel above the chat, click **"key_1 → 429"** (or **"key_1 → 500"**). Send a message.
+2. **Observe**:
+   - The response succeeds with HTTP 200.
+   - The metadata shows `key: key_2` and `fallbacks: 1`.
+   - The failover replay chip appears: `key_1 ✗ 429 ➔ key_2 ✓`.
+3. **Verify Complete Outage (503)**:
+   - Select **"All keys down"** (`*=429`). Send a message.
+   - The UI shakes and cleanly displays the error message `All providers are unavailable right now. Please try again in a moment.` with a **Retry** button.
+   - Database check: No turn is recorded in session history.
+
+### How to Verify Cache Hits
+1. Click the suggested chip **"What is the capital of France?"** in a new session.
+   - Response arrives via live inference in ~600 ms with badge `● LIVE_INFERENCE`.
+2. Click **"⟳ Ask again"** or open a new session and send the exact same question.
+   - Response arrives in < 5 ms with badge `⚡ LLM_CACHE` and an animated gold pulse.
+   - The visual latency bar remains a tiny sliver compared to the live green bar.
+
+### How to Verify Per-Message Token Usage
+- Every assistant reply displays:
+  - `in`: Prompt tokens for that specific request (system prompt + history + user message).
+  - `out`: Completion tokens for that response only.
+- Notice that as conversation history grows, `in` increases appropriately per turn, but is **never a cumulative conversation total**.
+
+---
+
+## 5. Setup Used: your editor and AI tools
+
+- **Editor & IDE**: Visual Studio Code / Antigravity IDE on Windows 11.
+- **Runtime Environment**: Python 3.11, Node.js v26.13, Vite 5, Docker Compose v2.
+- **AI Tools & Assistants**:
+  - **Antigravity AI Agent**: Used for full-stack scaffolding, automated multi-turn state management, and strict contract verification.
+  - **LiteLLM**: Model orchestration, automated retry/failover handling, and local cache management.
+
+---
+
+## 6. Bonus features (if any): what you added beyond the requirements and why
+
+1. **🎤 Voice Input (Speech-to-Text Dictation)**:
+   - Built-in browser `SpeechRecognition` mic button.
+   - Pulses red while listening and auto-transcribes words directly into the input box with interim feedback.
+   - Enables hands-free interactions without extra API keys or cost.
+2. **🔊 Text-to-Speech (Read Replies Aloud)**:
+   - Speaker button on every assistant bubble reading replies using native `SpeechSynthesis`.
+   - Optional setting to automatically read incoming responses aloud.
+3. **📎 Multimodal File & Image Attachments with Vision Routing**:
+   - Support for `.txt`, `.csv`, `.md`, `.py`, `.json`, `.js`, etc., ingested client-side into the prompt within the 4,000-character limit.
+   - Supports images via file picker, drag-and-drop, or clipboard paste (`Ctrl+V`). Images are resized to $\le 1024\text{ px}$.
+   - **Vision-Aware Model Routing**: Automatically checks vision support and routes image queries directly to vision-capable models (e.g. Gemini), skipping text-only models without counting as a failure.
+4. **📁 Past Sessions History Drawer**:
+   - Sidebar drawer displaying previous sessions. Clicking any session retrieves and displays the conversation turns from SQLite via `GET /sessions/{session_id}/messages`.
+5. **⚡ Interactive Failover Control Panel**:
+   - Segmented buttons (`Normal`, `key_1 → 429`, `key_1 → 500`, `All keys down`) making the resilience demonstration 1-click easy.
+6. **Visual Latency Speed Bar & Gold Flash**:
+   - Visual speed track underneath each bubble highlighting the dramatic speed improvement between live inference (~600 ms) and cache hits (< 5 ms).
+7. **System Prompt Presets**:
+   - Quick one-click prompt presets (`Concise`, `Explain like I'm 10`, `Code Expert`, `Pirate`) to showcase how system prompts alter responses and cache signatures.
+8. **Live Session Analytics Strip**:
+   - Real-time dashboard showing total replies, cache hit ratio (e.g. `33% cached`), cumulative tokens used, and average response times.
