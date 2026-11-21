@@ -1,5 +1,10 @@
 // Backend base URL, baked in at build time (Vite exposes only VITE_* variables).
-export const API_URL = (import.meta.env.VITE_API_URL || "http://localhost:8000").replace(/\/+$/, "");
+const rawUrl = (import.meta.env.VITE_API_URL || "").trim();
+let resolved = rawUrl || "http://localhost:8000";
+if (resolved && !resolved.startsWith("http://") && !resolved.startsWith("https://")) {
+  resolved = `https://${resolved}`;
+}
+export const API_URL = resolved.replace(/\/+$/, "");
 
 // New random id on every page load -> new session (spec: "A new session starts on each page load").
 export function newSessionId() {
