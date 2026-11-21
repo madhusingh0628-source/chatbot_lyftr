@@ -1,0 +1,34 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    # ${VAR} values come from your shell or from the .env file next to this file
+    environment:
+      LLM_API_KEYS: ${LLM_API_KEYS:-}
+      LLM_MODEL: ${LLM_MODEL:-gemini/gemini-2.0-flash}
+      LLM_MODELS: ${LLM_MODELS:-}
+      DEFAULT_SYSTEM_PROMPT: ${DEFAULT_SYSTEM_PROMPT:-You are a helpful, concise assistant.}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/app.db}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
+      ENABLE_FAILURE_SIMULATION: ${ENABLE_FAILURE_SIMULATION:-true}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-30}
+      MAX_HISTORY_MESSAGES: ${MAX_HISTORY_MESSAGES:-100}
+    volumes:
+      - chatbot-data:/data   # SQLite file survives container restarts and rebuilds
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  chatbot-data:

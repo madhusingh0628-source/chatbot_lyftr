@@ -1,0 +1,18 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mock-backend",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["C:/Users/madhu/AppData/Local/Temp/claude/55365c99dd2034d0/58425c47-0281-429e-989a-982c31e396b4/scratchpad/mock_server.py"],
+      "port": 8001
+    },
+    {
+      "name": "frontend-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "C:/Users/madhu/Downloads/llm-chatbot/chatbot/frontend", "run", "dev", "--", "--host", "127.0.0.1", "--port", "5174", "--strictPort"],
+      "env": { "VITE_API_URL": "http://127.0.0.1:8001" },
+      "port": 5174
+    }
+  ]
+}
